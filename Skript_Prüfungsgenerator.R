@@ -1,0 +1,204 @@
+### Prüfungsgenerator
+
+### Setup
+library(XLConnect)
+library(officer)
+library(dplyr)
+library(png)
+
+### Read data
+
+wb = loadWorkbook("Prüfungsfragen Kleiner Sposs.xlsx")
+
+katalog = readTable(wb, "Fragekatalog", "fragekatalog")
+regeln_klein = readTable(wb, "Regeln", "regeln_klein")
+regeln_gross = readTable(wb, "Regeln", "regeln_gross")
+einleitung = readTable(wb, "Regeln", "Einleitung")
+
+# Erzeuge Fragenauswahl
+
+df_sample_klein = data.frame()
+
+for(thema in regeln_klein$Themengebiet){
+  smpl_size = regeln_klein$Anzahl.Fragen[which(regeln_klein$Themengebiet == thema)]
+  tmp_ids = katalog$row[which(katalog$Gebiet == thema)]
+  smpl_ids = sample(tmp_ids, smpl_size)
+  tmp_df = katalog[smpl_ids,]
+  df_sample_klein = bind_rows(df_sample_klein, tmp_df)
+}
+
+df_sample_gross = data.frame()
+
+for(thema in regeln_gross$Themengebiet){
+  smpl_size = regeln_gross$Anzahl.Fragen[which(regeln_gross$Themengebiet == thema)]
+  tmp_ids = katalog$row[which(katalog$Gebiet == thema)]
+  smpl_ids = sample(tmp_ids, smpl_size)
+  tmp_df = katalog[smpl_ids,]
+  df_sample_gross = bind_rows(df_sample_gross, tmp_df)
+}
+
+
+# Erzeuge Dokument kleiner Sposs ------------------------------------------
+
+doc_fragebogen = read_docx()
+doc_fragebogen_gross = read_docx()
+doc_korrektur_klein = read_docx()
+doc_korrektur_gross = read_docx()
+bold_face_large = shortcuts$fp_bold(font.size = 18)
+bold_face_mid = shortcuts$fp_bold(font.size = 12)
+
+whitespace = shortcuts$fp_bold(font.size = 60)
+
+fn_klein_fragen = "Fragebogen SPOSS klein 20171025.docx"
+fn_gross_fragen = "Fragebogen SPOSS gross 20171025.docx"
+
+fn_klein_korrektur = "Korrekturvorlage SPOSS klein 20171025.docx"
+fn_gross_korrektur = "Korrekturvorlage SPOSS gross 20171025.docx"
+
+
+# Einleitung
+
+doc_fragebogen =  doc_fragebogen %>% 
+  body_add_fpar(fpar(ftext("SPOSS ohne Küstenerweiterung", prop = bold_face_large)))
+
+doc_fragebogen_gross =  doc_fragebogen_gross %>% 
+  body_add_fpar(fpar(ftext("SPOSS mit Küstenerweiterung", prop = bold_face_large)))
+
+doc_korrektur_klein = doc_korrektur_klein %>% 
+  body_add_fpar(fpar(ftext("Korrekturvorlage SPOSS ohne Küstenerweiterung", prop = bold_face_large)))
+
+doc_korrektur_gross = doc_korrektur_gross %>%
+  body_add_fpar(fpar(ftext("Korrekturvorlage SPOSS mit Küstenerweiterung", prop = bold_face_large)))
+
+for(rw in 1:nrow(einleitung)){
+  doc_fragebogen =  doc_fragebogen %>% 
+    body_add_par(einleitung$Überschrift[rw], style = "heading 1") %>%
+    body_add_par(einleitung$Text_klein[rw], style = "Normal")
+  
+  doc_korrektur_klein = doc_korrektur_klein %>% 
+    body_add_par(einleitung$Überschrift[rw], style = "heading 1") %>%
+    body_add_par(einleitung$Text_klein[rw], style = "Normal")
+  
+  doc_fragebogen_gross = doc_fragebogen_gross %>% 
+    body_add_par(einleitung$Überschrift[rw], style = "heading 1") %>%
+    body_add_par(einleitung$Text_gross[rw], style = "Normal")
+  
+  doc_korrektur_gross = doc_korrektur_gross %>% 
+    body_add_par(einleitung$Überschrift[rw], style = "heading 1") %>%
+    body_add_par(einleitung$Text_gross[rw], style = "Normal")
+}
+doc_fragebogen =  doc_fragebogen %>% 
+  body_add_break()
+
+doc_korrektur_klein = doc_korrektur_klein %>% 
+  body_add_break()
+
+doc_fragebogen_gross = doc_fragebogen_gross %>% 
+  body_add_break()
+
+doc_korrektur_gross = doc_korrektur_gross %>%
+  body_add_break()
+
+# Äuessere Schleife: Themengebiet
+for(rw_gebiet in 1:nrow(regeln_klein)){
+  gebiet = regeln_klein$Themengebiet[rw_gebiet]
+  
+  doc_fragebogen =  doc_fragebogen %>% 
+    body_add_par(regeln_klein$Themengebiet[rw_gebiet], style = "heading 1") %>% 
+    body_add_fpar(fpar(ftext("Fragekatalog SPOSS ohne Küstenerweiterung", prop = bold_face_mid))) %>%
+    body_add_fpar(fpar(ftext("Name: ", prop = bold_face_mid))) 
+  
+  doc_korrektur_klein = doc_korrektur_klein %>% 
+    body_add_par(regeln_klein$Themengebiet[rw_gebiet], style = "heading 1") %>% 
+    body_add_fpar(fpar(ftext("Korrekturvorlage SPOSS ohne Küstenerweiterung", prop = bold_face_mid)))
+  
+  tmp_fragen = df_sample_klein %>% filter(Gebiet == gebiet)
+  
+  for(rw_fragen in 1:nrow(tmp_fragen)){
+    doc_fragebogen =  doc_fragebogen %>% 
+      body_add_par(paste("Frage"), style = "heading 2") %>%
+      body_add_par(tmp_fragen$Frage[rw_fragen], style = "Normal") %>%
+      body_add_fpar(fpar(ftext("|", prop = whitespace))) %>%
+      body_add_fpar(fpar(ftext("|", prop = whitespace))) 
+    if(!is.na(tmp_fragen$Grafik_Frage[rw_fragen])){
+        doc_fragebogen =  doc_fragebogen %>% 
+          body_add_img(tmp_fragen$Grafik_Frage[rw_fragen], width = 5, height = 3, style = "centered") 
+        
+    }
+    
+    doc_korrektur_klein = doc_korrektur_klein %>%  
+      body_add_par(paste("Frage"), style = "heading 2") %>%
+      body_add_par(tmp_fragen$Frage[rw_fragen], style = "Normal") %>%
+      body_add_par(paste("Lösung"), style = "heading 2") %>%
+      body_add_par(tmp_fragen$Antwort[rw_fragen], style = "Normal")
+    if(!is.na(tmp_fragen$Grafik_Frage[rw_fragen])){
+      doc_korrektur_klein =  doc_korrektur_klein %>% 
+        body_add_img(tmp_fragen$Grafik_Frage[rw_fragen], width = 5, height = 3, style = "centered")
+    }
+    if(!is.na(tmp_fragen$Grafik_Antwort[rw_fragen])){
+      doc_korrektur_klein =  doc_korrektur_klein %>% 
+        body_add_img(tmp_fragen$Grafik_Antwort[rw_fragen], width = 5, height = 3, style = "centered")
+    }
+  }
+  doc_fragebogen =  doc_fragebogen %>% 
+    body_add_break()
+  
+  doc_korrektur_klein = doc_korrektur_klein %>% 
+    body_add_break()
+}
+
+for(rw_gebiet in 1:nrow(regeln_gross)){
+  gebiet = regeln_gross$Themengebiet[rw_gebiet]
+  
+  doc_fragebogen_gross =  doc_fragebogen_gross %>% 
+    body_add_par(regeln_gross$Themengebiet[rw_gebiet], style = "heading 1") %>% 
+    body_add_fpar(fpar(ftext("Fragekatalog SPOSS mit Küstenerweiterung", prop = bold_face_mid))) %>%
+    body_add_fpar(fpar(ftext("Name: ", prop = bold_face_mid))) 
+  
+  doc_korrektur_gross = doc_korrektur_gross %>% 
+    body_add_par(regeln_gross$Themengebiet[rw_gebiet], style = "heading 1") %>% 
+    body_add_fpar(fpar(ftext("Korrekturvorlage SPOSS mit Küstenerweiterung", prop = bold_face_mid)))
+  
+  tmp_fragen = df_sample_gross %>% filter(Gebiet == gebiet)
+  
+  for(rw_fragen in 1:nrow(tmp_fragen)){
+    doc_fragebogen_gross =  doc_fragebogen_gross %>% 
+      body_add_par(paste("Frage"), style = "heading 2") %>%
+      body_add_par(tmp_fragen$Frage[rw_fragen], style = "Normal") %>%
+      body_add_fpar(fpar(ftext("|", prop = whitespace))) %>%
+      body_add_fpar(fpar(ftext("|", prop = whitespace))) 
+    if(!is.na(tmp_fragen$Grafik_Frage[rw_fragen])){
+      doc_fragebogen_gross =  doc_fragebogen_gross %>% 
+        body_add_img(tmp_fragen$Grafik_Frage[rw_fragen], width = 5, height = 3, style = "centered") 
+    }
+    
+    doc_korrektur_gross = doc_korrektur_gross %>%  
+      body_add_par(paste("Frage"), style = "heading 2") %>%
+      body_add_par(tmp_fragen$Frage[rw_fragen], style = "Normal") %>%
+      body_add_par(paste("Lösung"), style = "heading 2") %>%
+      body_add_par(tmp_fragen$Antwort[rw_fragen], style = "Normal")
+    if(!is.na(tmp_fragen$Grafik_Frage[rw_fragen])){
+      doc_korrektur_gross =  doc_korrektur_gross %>% 
+        body_add_img(tmp_fragen$Grafik_Frage[rw_fragen], width = 5, height = 3, style = "centered")
+    }
+    if(!is.na(tmp_fragen$Grafik_Antwort[rw_fragen])){
+      doc_korrektur_gross =  doc_korrektur_gross %>% 
+        body_add_img(tmp_fragen$Grafik_Antwort[rw_fragen], width = 5, height = 3, style = "centered")
+    }
+  }
+  doc_fragebogen_gross =  doc_fragebogen_gross %>% 
+    body_add_break()
+  
+  doc_korrektur_gross = doc_korrektur_gross %>% 
+    body_add_break()
+}
+
+
+
+# Speichern Dokumente -----------------------------------------------------
+
+
+print(doc_fragebogen, target = fn_klein_fragen)
+print(doc_fragebogen_gross, target = fn_gross_fragen)
+print(doc_korrektur_klein, target = fn_klein_korrektur)
+print(doc_korrektur_gross, target = fn_gross_korrektur)
